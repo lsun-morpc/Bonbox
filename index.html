@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Map with Side Navigation</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            z-index: 0;
+        }
+
+        /* Side navigation menu */
+        #mySidenav a {
+            position: absolute;
+            left: -80px;
+            transition: 0.3s;
+            padding: 15px;
+            width: 100px;
+            text-decoration: none;
+            font-size: 20px;
+            color: white;
+            border-radius: 0 5px 5px 0;
+            z-index: 1001; /* Ensure it's above the map */
+        }
+
+        #mySidenav a:hover {
+            left: 0;
+        }
+
+        #about {
+            top: 100px;
+            background-color: #04AA6D;
+        }
+
+        #blog {
+            top: 160px;
+            background-color: #2196F3;
+        }
+
+        #projects {
+            top: 220px;
+            background-color: #f44336;
+        }
+
+        #contact {
+            top: 280px;
+            background-color: #555;
+        }
+
+        #recenter-btn {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: linear-gradient(135deg, #f0f0f0, #d0d0d0);
+            color: grey;
+            border: none;
+            padding: 10px;
+            border-radius: 5px;
+            cursor: pointer;
+            z-index: 1000; /* Ensure button is above the map */
+            font-size: 16px;
+        }
+
+        #recenter-btn:hover {
+            background: linear-gradient(135deg, #d0d0d0, #f0f0f0);
+            color: black;
+        }
+
+        #info-box {
+            position: absolute;
+            bottom: 20px;
+            right: 10px;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 10px;
+            border-radius: 5px;
+            z-index: 1000; /* Ensure info box is above the map */
+            font-size: 14px;
+            width: 200px; /* Optional: Set a fixed width for info box */
+        }
+
+        /* Custom positioning for Leaflet control */
+        .leaflet-control-layers {
+            top: 10px; /* Distance from the bottom of the map */
+            right: 10px;  /* Distance from the right of the map */
+            margin: 0;    /* Remove default margin */
+            z-index: 1000; /* Ensure it is above the map */
+        }
+    </style>
+    <!-- Include Leaflet CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+    <!-- Include Leaflet Control Geocoder CSS and JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+    <script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+</head>
+<body>
+    <div id="mySidenav" class="sidenav">
+        <a href="#" id="about">About</a>
+        <a href="#" id="blog">Blog</a>
+        <a href="#" id="projects">Projects</a>
+        <a href="#" id="contact">Contact</a>
+    </div>
+
+    <button id="recenter-btn">Re-Center</button>
+    <div id="map"></div>
+    <div id="info-box">Click on a state to see details.</div>
+
+    <script>
+        // Initialize the Leaflet map
+        var map = L.map('map').setView([37.8, -96], 4); // Initial center and zoom level
+
+        // Add tile layer from OpenStreetMap
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        }).addTo(map);
+
+        // Add the search bar control
+        var searchControl = L.Control.geocoder({
+            defaultMarkGeocode: false
+        })
+        .on('markgeocode', function(e) {
+            var bbox = e.geocode.bbox;
+            var poly = L.polygon([
+                bbox.getSouthEast(),
+                bbox.getNorthEast(),
+                bbox.getNorthWest(),
+                bbox.getSouthWest()
+            ]).addTo(map);
+            map.fitBounds(poly.getBounds());
+            // Store the polygon in the history stack
+            addToHistory('add', poly);
+            // Make the polygon clickable for removal
+            poly.on('click', onPolygonClick);
+        })
+        .addTo(map);
+
+        // Define initial center and zoom level
+        var initialCenter = [37.8, -96];
+        var initialZoom = 4;
+
+        // Define style for the polygons
+        function style(feature) {
+            return {
+                fillColor: '#ffffff',
+                weight: 2,
+                opacity: 1,
+                color: 'black',
+                dashArray: '3',
+                fillOpacity: 0.7
+            };
+        }
+
+        // Define event handlers for each polygon
+        function onEachFeature(feature, layer) {
+            layer.on({
+                mouseover: highlightFeature,
+                mouseout: resetHighlight,
+                click: onFeatureClick
+            });
+        }
+
+        // Highlight feature on mouseover
+        function highlightFeature(e) {
+            var layer = e.target;
+            layer.setStyle({
+                weight: 5,
+                color: '#666',
+                dashArray: '',
+                fillOpacity: 0.7
+            });
+        }
+
+        // Reset highlight on mouseout
+        function resetHighlight(e) {
+            geojson.resetStyle(e.target);
+        }
+
+        // Show interactive text on polygon click
+        function onFeatureClick(e) {
+            var layer = e.target;
+            var properties = layer.feature.properties;
+            var infoBox = document.getElementById('info-box');
+            infoBox.innerHTML = `<strong>${properties.name || 'State'}</strong><br>${properties.description || 'No description available.'}`;
+            map.fitBounds(e.target.getBounds());
+        }
+
+        // Load GeoJSON data and add to map
+        var geojson = L.geoJson(null, {
+            style: style,
+            onEachFeature: onEachFeature
+        }).addTo(map);
+
+        // Fetch and add the US states GeoJSON data
+        fetch('https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json')
+            .then(response => response.json())
+            .then(data => {
+                geojson.addData(data);
+            });
+
+        // Create marker layer groups
+        var markerLayerGroup1 = L.layerGroup().addTo(map);
+        var markerLayerGroup2 = L.layerGroup().addTo(map);
+
+        // Array of markers for Layer Group 1
+        var markersGroup1 = [
+            { lat: 41.8781, lng: -87.6298, popupText: 'Chicago' },
+            { lat: 33.7488, lng: -84.3877, popupText: 'Atlanta' } // Add more markers here
+        ];
+        
+        // Define the coordinates for the polygon
+        var polygonCoordinates1 = [
+          [42.3601, -71.0589], // Boston
+          [40.7128, -74.0060], // New York
+          [39.9526, -75.1652], // Philadelphia
+          [38.9072, -77.0369]  // Washington DC
+        ];
+        
+        // Array of markers for Layer Group 2
+        var markersGroup2 = [
+            { lat: 47.6061, lng: -122.3328, popupText: 'Seattle' },
+            { lat: 39.7392, lng: -104.9903, popupText: 'Denver' } // Add more markers here
+        ];
+
+        // Define the coordinates for the polygon
+        var polygonCoordinates2 = [
+          [37.7749, -122.4194], // San Francisco
+          [34.0522, -118.2437], // Los Angeles
+          [32.7157, -117.1611]  // San Diego
+        ];
+        
+        // Add markers to Layer Group 1
+        markersGroup1.forEach(marker => {
+            L.marker([marker.lat, marker.lng]).bindPopup(marker.popupText).addTo(markerLayerGroup1);
+        });
+
+        // Add markers to Layer Group 2
+        markersGroup2.forEach(marker => {
+            L.marker([marker.lat, marker.lng]).bindPopup(marker.popupText).addTo(markerLayerGroup2);
+        });
+
+        // Create the polygon and add it to Layer Group 1
+        var polygon1 = L.polygon(polygonCoordinates1, {
+          color: 'blue',
+          fillColor: '#0000FF',
+          fillOpacity: 0.5
+        }).bindPopup('Polygon in Layer 1').addTo(markerLayerGroup1);
+        
+        // Create the polygon and add it to Layer Group 2
+        var polygon2 = L.polygon(polygonCoordinates2, {
+          color: 'red', // Change color for distinction
+          fillColor: '#FF0000',
+          fillOpacity: 0.5
+        }).bindPopup('Polygon in Layer 2').addTo(markerLayerGroup2);
+        
+        // Add layer control to toggle layers on/off
+        var baseMaps = {};
+        var overlayMaps = {
+            "Marker Layer 1": markerLayerGroup1,
+            "Marker Layer 2": markerLayerGroup2
+        };
+        L.control.layers(baseMaps, overlayMaps).addTo(map);
+
+        // Functionality to re-center the map
+        document.getElementById('recenter-btn').addEventListener('click', function() {
+            map.setView(initialCenter, initialZoom);
+        });
+
+        // Function to store actions in a history stack for undo/redo functionality
+        var historyStack = [];
+        function addToHistory(action, item) {
+            historyStack.push({ action: action, item: item });
+        }
+
+        // Function to handle polygon click for removal
+        function onPolygonClick(e) {
+            var poly = e.target;
+            map.removeLayer(poly);
+            addToHistory('remove', poly);
+        }
+
+        // Function to handle undo operation
+        function undoAction() {
+            var lastAction = historyStack.pop();
+            if (lastAction.action === 'add') {
+                map.removeLayer(lastAction.item);
+            } else if (lastAction.action === 'remove') {
+                map.addLayer(lastAction.item);
+            }
+        }
+
+        // Function to handle redo operation
+        function redoAction() {
+            // Implementation for redo can be added here based on requirements
+        }
+
+        // Bind undo/redo to keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'z') {
+                undoAction();
+            } else if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
+                redoAction();
+            }
+        });
+    </script>
+</body>
+</html>
